@@ -32,8 +32,8 @@ public sealed class SortOptions
     public DuplicateHandling DuplicateHandling { get; set; } = DuplicateHandling.Rename;
     /// <summary>Hash files and divert exact content duplicates into the duplicates folder.</summary>
     public bool DetectExactDuplicates { get; set; }
-    /// <summary>Put diverted duplicates into a "Duplicates" subfolder of the output root.</summary>
-    public bool MoveDuplicatesToSubfolder { get; set; }
+    /// <summary>Put diverted duplicates into a "Duplicates" subfolder of the output root; off = detected duplicates sort normally.</summary>
+    public bool MoveDuplicatesToSubfolder { get; set; } = true;
     public bool IncludePictures { get; set; } = true;
     public bool IncludeVideos { get; set; } = true;
     /// <summary>Space/comma/semicolon-separated list like "jpg png raw". Overrides the two flags above when non-empty.</summary>

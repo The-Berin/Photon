@@ -17,6 +17,18 @@ public sealed class JournalEntry
     /// </summary>
     public string? DisplacedBackupPath { get; init; }
     public long SizeBytes { get; init; }
+    /// <summary>
+    /// For entries whose undo deletes the file at NewPath (Copied, copy-run Overwrote /
+    /// MovedToDuplicates): the destination's last-write time (UTC) right after the copy.
+    /// Undo compares against it so a file edited after the sort is stashed, never deleted.
+    /// </summary>
+    public DateTime? NewFileWriteTimeUtc { get; init; }
+    /// <summary>
+    /// Set once an undo pass conclusively reversed this entry, so a retried undo
+    /// (after cancellation or a partial failure) never replays it — replaying an
+    /// Overwrote entry would delete the file the first pass just restored.
+    /// </summary>
+    public bool Undone { get; set; }
 }
 
 /// <summary>

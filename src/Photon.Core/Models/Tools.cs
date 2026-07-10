@@ -17,12 +17,27 @@ public sealed class ScanFilter
     /// <summary>Builds the filter a SortOptions implies (custom extensions override the type flags).</summary>
     public static ScanFilter FromSortOptions(SortOptions o)
     {
+        // Users type "*.jpg", "jpg." or "tar.gz"; Path.GetExtension only ever yields the
+        // final ".xyz" segment, so anything else would silently match zero files.
         var custom = (o.CustomExtensions ?? "")
             .Split([' ', ',', ';'], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
-            .Select(e => (e.StartsWith('.') ? e : "." + e).ToLowerInvariant())
+            .Select(e =>
+            {
+                var cleaned = e.Replace("*", "").Trim('.', ' ');
+                var lastDot = cleaned.LastIndexOf('.');
+                return lastDot >= 0 ? cleaned[(lastDot + 1)..] : cleaned;
+            })
+            .Where(e => e.Length > 0)
+            .Select(e => "." + e.ToLowerInvariant())
             .ToHashSet();
         if (custom.Count > 0)
-            return new ScanFilter { PictureExtensions = custom, VideoExtensions = [], Recursive = o.IncludeSubfolders };
+        {
+            // Known video extensions keep their video classification so the metadata
+            // reader uses container dates instead of EXIF for them.
+            var videos = custom.Where(DefaultVideoExtensions.Contains).ToHashSet();
+            custom.ExceptWith(videos);
+            return new ScanFilter { PictureExtensions = custom, VideoExtensions = videos, Recursive = o.IncludeSubfolders };
+        }
         return new ScanFilter
         {
             PictureExtensions = o.IncludePictures ? [.. DefaultPictureExtensions] : [],
