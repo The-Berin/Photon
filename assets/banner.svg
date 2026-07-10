@@ -1,0 +1,26 @@
+<svg width="1200" height="360" viewBox="0 0 1200 360" fill="none" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Photon — fast • local • photo sorting">
+<defs>
+<linearGradient id="photon-bg" x1="0" y1="0" x2="1200" y2="360" gradientUnits="userSpaceOnUse">
+<stop offset="0" stop-color="#13131a"/><stop offset="1" stop-color="#1c182c"/></linearGradient>
+<radialGradient id="photon-glow" cx="219.5" cy="180.5" r="250" gradientUnits="userSpaceOnUse">
+<stop offset="0" stop-color="#f59e0b" stop-opacity="0.20"/>
+<stop offset="1" stop-color="#f59e0b" stop-opacity="0"/></radialGradient>
+<linearGradient id="photon-icon" x1="126" y1="87" x2="313" y2="274" gradientUnits="userSpaceOnUse">
+<stop offset="0" stop-color="#fcd34d"/><stop offset="1" stop-color="#d97706"/></linearGradient>
+<linearGradient id="photon-sheen" x1="126" y1="87" x2="222" y2="213" gradientUnits="userSpaceOnUse">
+<stop offset="0" stop-color="#ffffff" stop-opacity="0.18"/><stop offset="0.5" stop-color="#ffffff" stop-opacity="0"/></linearGradient>
+<filter id="photon-ds" x="-40%" y="-40%" width="180%" height="180%" color-interpolation-filters="sRGB">
+<feDropShadow dx="0" dy="7" stdDeviation="11" flood-color="#000000" flood-opacity="0.33"/></filter>
+<linearGradient id="photon-title" x1="371" y1="118" x2="371" y2="190" gradientUnits="userSpaceOnUse">
+<stop offset="0" stop-color="#ffffff"/><stop offset="1" stop-color="#d7d7e2"/></linearGradient>
+</defs>
+<rect width="1200" height="360" fill="url(#photon-bg)"/>
+<rect width="1200" height="360" fill="url(#photon-glow)"/>
+<g fill="none" stroke="#f59e0b" stroke-opacity="0.11" stroke-width="8"><circle cx="1150" cy="180" r="70"/><circle cx="1150" cy="180" r="120"/><circle cx="1150" cy="180" r="170"/></g>
+<rect x="126" y="87" width="187" height="187" rx="30" fill="url(#photon-icon)" filter="url(#photon-ds)"/>
+<rect x="126" y="87" width="187" height="187" rx="30" fill="url(#photon-sheen)"/>
+<rect x="126.75" y="87.75" width="185.5" height="185.5" rx="29.25" fill="none" stroke="#ffffff" stroke-opacity="0.12" stroke-width="1.5"/>
+<g transform="translate(219.5,180.5) scale(1.0872) translate(-150,-150)"><path d="M118,111 h20 a7,7 0 0 1 7,7 v20 a7,7 0 0 1 -7,7 h-20 a7,7 0 0 1 -7,-7 v-20 a7,7 0 0 1 7,-7 zM162,111 h20 a7,7 0 0 1 7,7 v20 a7,7 0 0 1 -7,7 h-20 a7,7 0 0 1 -7,-7 v-20 a7,7 0 0 1 7,-7 zM118,155 h20 a7,7 0 0 1 7,7 v20 a7,7 0 0 1 -7,7 h-20 a7,7 0 0 1 -7,-7 v-20 a7,7 0 0 1 7,-7 zM162,155 h20 a7,7 0 0 1 7,7 v20 a7,7 0 0 1 -7,7 h-20 a7,7 0 0 1 -7,-7 v-20 a7,7 0 0 1 7,-7 z" fill="#fff"/></g>
+<text x="371" y="187" font-family="'Segoe UI', -apple-system, BlinkMacSystemFont, 'Helvetica Neue', Arial, sans-serif" font-size="88" font-weight="800" letter-spacing="-1" fill="url(#photon-title)">Photon</text>
+<text x="366" y="248" font-family="'Segoe UI', -apple-system, BlinkMacSystemFont, 'Helvetica Neue', Arial, sans-serif" font-size="30" font-weight="500" fill="#8b8b9a">fast • local • photo sorting</text>
+</svg>
