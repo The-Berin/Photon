@@ -106,6 +106,13 @@ public partial class MainForm : Form
         _txtWav.TextChanged += OnCosmeticOptionChanged;
         _btnBrowseWav.Click += (_, _) => BrowseWav();
         _chkDarkMode.CheckedChanged += (_, _) => { if (!_suppress) ApplyDarkMode(_chkDarkMode.Checked); };
+        _chk24Hour.CheckedChanged += (_, _) =>
+        {
+            if (_suppress) return;
+            Settings.Use24HourClock = _chk24Hour.Checked;
+            UpdateClock();
+            ScheduleSave();
+        };
         _chkKeepDisplay.CheckedChanged += OnKeepAwakeToggled;
         _chkKeepAwakeRun.CheckedChanged += OnKeepAwakeToggled;
         _cboSizeUnit.SelectedIndexChanged += (_, _) =>
@@ -187,6 +194,7 @@ public partial class MainForm : Form
             var dark = Settings.Theme == AppTheme.Dark;
             _chkDarkMode.Checked = dark;
             _miDarkMode.Checked = dark;
+            _chk24Hour.Checked = Settings.Use24HourClock;
             _chkKeepDisplay.Checked = o.KeepAwake;
             _chkKeepAwakeRun.Checked = o.KeepAwake;
             _cboSizeUnit.SelectedIndex = (int)o.SizeUnit;
@@ -909,8 +917,10 @@ public partial class MainForm : Form
             >= 17 and < 22 => "Good evening",
             _ => "Good night",
         };
+        var time = now.ToString(
+            Settings.Use24HourClock ? "HH:mm:ss" : "h:mm:ss tt", CultureInfo.InvariantCulture);
         _lblClock.Text =
-            $"{greeting} · {now.ToString("dddd, d MMMM yyyy", CultureInfo.InvariantCulture)} · {now:HH:mm:ss}";
+            $"{greeting} · {now.ToString("dddd, d MMMM yyyy", CultureInfo.InvariantCulture)} · {time}";
     }
 
     // ----- window lifecycle -----

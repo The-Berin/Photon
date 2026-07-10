@@ -102,6 +102,7 @@ public partial class BatchRenameForm : Form
             _debounce?.Dispose();
             _loadCts?.Dispose();
             _cts?.Dispose();
+            _tips?.Dispose();
         }
         base.Dispose(disposing);
     }

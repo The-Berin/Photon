@@ -4,6 +4,9 @@ public partial class BatchRenameForm
 {
     private const int ColInclude = 0, ColOld = 1, ColNew = 2, ColFolder = 3, ColSize = 4, ColStatus = 5;
 
+    /// <summary>The one ToolTip component every panel shares.</summary>
+    private ToolTip _tips = null!;
+
     private TableLayoutPanel _topPanel = null!;
     private TextBox _txtFolder = null!;
     private Button _btnBrowse = null!;
@@ -30,6 +33,7 @@ public partial class BatchRenameForm
     private void BuildLayout()
     {
         SuspendLayout();
+        _tips = new ToolTip();
 
         // ----- top: folder + masks -----
         _topPanel = new TableLayoutPanel
@@ -76,9 +80,8 @@ public partial class BatchRenameForm
         maskRow.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 50));
         _txtIncludeMask = new TextBox { Dock = DockStyle.Fill };
         _txtExcludeMask = new TextBox { Dock = DockStyle.Fill };
-        var tips = new ToolTip();
-        tips.SetToolTip(_txtIncludeMask, "Wildcard mask like IMG_*.jpg — empty means all loaded files");
-        tips.SetToolTip(_txtExcludeMask, "Files matching this mask are left alone");
+        _tips.SetToolTip(_txtIncludeMask, "Wildcard mask like IMG_*.jpg — empty means all loaded files");
+        _tips.SetToolTip(_txtExcludeMask, "Files matching this mask are left alone");
         maskRow.Controls.Add(NewLabel("Include mask:"), 0, 0);
         maskRow.Controls.Add(_txtIncludeMask, 1, 0);
         maskRow.Controls.Add(NewLabel("Exclude mask:"), 2, 0);
@@ -139,7 +142,7 @@ public partial class BatchRenameForm
         };
 
         // ----- right: options column -----
-        _optionsColumn = new Panel { Dock = DockStyle.Right, Width = 480, Padding = new Padding(4, 0, 0, 0) };
+        _optionsColumn = new Panel { Dock = DockStyle.Right, Width = 520, Padding = new Padding(4, 0, 0, 0) };
 
         _presetStrip = new ToolStrip { GripStyle = ToolStripGripStyle.Hidden, Dock = DockStyle.Top };
         _cmbPreset = new ToolStripComboBox { DropDownStyle = ComboBoxStyle.DropDownList, Width = 250 };
@@ -352,6 +355,9 @@ public partial class BatchRenameForm
                 case RadioButton r: r.CheckedChanged += (_, _) => RequestPreview(); break;
                 case ComboBox b: b.SelectedIndexChanged += (_, _) => RequestPreview(); break;
                 case NumericUpDown n: n.ValueChanged += (_, _) => RequestPreview(); break;
+                // Fires for the embedded null-checkbox too — the native control raises
+                // DTN_DATETIMECHANGE (hence ValueChanged) when the check state flips.
+                case DateTimePicker d: d.ValueChanged += (_, _) => RequestPreview(); break;
             }
         }
     }

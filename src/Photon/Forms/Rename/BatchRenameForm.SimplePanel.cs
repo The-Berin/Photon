@@ -116,7 +116,8 @@ public partial class BatchRenameForm
             Width = width,
             DropDownStyle = ComboBoxStyle.DropDownList,
         };
-        cmb.Items.AddRange(["Keep as-is", "lowercase", "UPPERCASE", "Title Case", "Sentence case", "iNVERT cASE"]);
+        cmb.Items.AddRange(["Keep as-is", "lowercase", "UPPERCASE", "Title Case", "Sentence case", "iNVERT cASE",
+            "PascalCase", "camelCase", "snake_case", "kebab-case", "rAnDoM cAsE"]);
         cmb.SelectedIndex = 0;
         return cmb;
     }

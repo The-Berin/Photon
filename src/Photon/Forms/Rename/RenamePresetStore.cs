@@ -55,6 +55,31 @@ internal sealed class RenamePresetStore
             Pattern = "{camera}_{mp}MP_{yyyy}-{MM}-{dd}_{counter}",
             CounterPadding = 3, ExtensionCase = CaseTransform.Lower,
         },
+        ["Number by date taken"] = new()
+        {
+            Pattern = "{yyyy}-{MM}-{dd}_{counter}",
+            DateSource = DateSource.ExifThenFileDate,
+            NumberingOrder = NumberingOrder.DateAscending,
+            CounterStart = 1, CounterStep = 1, CounterPadding = 4,
+            ExtensionCase = CaseTransform.Lower,
+        },
+        ["Scrub download junk"] = new()
+        {
+            Pattern = "{name}",
+            RemoveUrls = true, RemoveGuidPatterns = true, RemoveBracketedText = true,
+            RemoveCameraPrefixes = true, ReplaceUnderscoresWithSpaces = true,
+            CollapseRepeatedSeparators = true, TrimSeparators = true,
+            TrimWhitespace = true, CollapseSpaces = true,
+        },
+        ["Flatten to ASCII kebab"] = new()
+        {
+            Pattern = "{name}",
+            TransliterateToAscii = true,
+            NameCase = CaseTransform.KebabCase,
+            ExtensionCase = CaseTransform.Lower,
+            NormalizeExtensions = true,
+            CollapseRepeatedSeparators = true, TrimSeparators = true,
+        },
     };
 
     public void Load()

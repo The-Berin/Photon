@@ -63,6 +63,9 @@ public static class ThemeService
     /// </summary>
     public static void FixGaps(Form form)
     {
+        // Every Photon window calls FixGaps exactly once from its constructor, which makes
+        // this the single cheapest hook to stamp the app icon on all of them too.
+        AppIcon.Apply(form);
         if (!IsDark) return;
         // Drop-downs and context menus default to ManagerRenderMode, so the shared dark
         // renderer covers them even though they never appear in a form's control tree.

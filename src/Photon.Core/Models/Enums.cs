@@ -123,6 +123,61 @@ public enum CaseTransform
     TitleCase,
     SentenceCase,
     InvertCase,
+    PascalCase,
+    CamelCase,
+    SnakeCase,
+    KebabCase,
+    /// <summary>Deterministic per-file rAnDoM cAsE (seeded by the name, so previews are stable).</summary>
+    RandomCase,
+}
+
+/// <summary>Which part of the file name a find/replace rule touches.</summary>
+public enum ReplaceTarget
+{
+    NameOnly,
+    ExtensionOnly,
+    Both,
+}
+
+/// <summary>How an insert rule locates its insertion point.</summary>
+public enum InsertAnchor
+{
+    AtPosition,
+    BeforeText,
+    AfterText,
+}
+
+/// <summary>Rendering style for {counter}/{counter2} values.</summary>
+public enum CounterStyle
+{
+    Numeric,
+    AlphaLower,
+    AlphaUpper,
+    RomanLower,
+    RomanUpper,
+    HexLower,
+    HexUpper,
+}
+
+/// <summary>Which order files receive counter values in the batch renamer.</summary>
+public enum NumberingOrder
+{
+    AsListed,
+    NameAscending,
+    NameDescending,
+    DateAscending,
+    DateDescending,
+    SizeAscending,
+    SizeDescending,
+    PathAscending,
+}
+
+/// <summary>Where over-long names lose characters when MaxNameLength applies.</summary>
+public enum TruncateFrom
+{
+    End,
+    Start,
+    Middle,
 }
 
 /// <summary>What the batch renamer does when the target name already exists.</summary>

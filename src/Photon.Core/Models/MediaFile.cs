@@ -22,6 +22,18 @@ public sealed class MediaFile
     public double? GpsLongitude { get; set; }
     public int? PixelWidth { get; set; }
     public int? PixelHeight { get; set; }
+    // Extended photo/video metadata for rename tokens (best-effort, null when absent)
+    public string? LensModel { get; set; }
+    public string? Artist { get; set; }
+    public string? Software { get; set; }
+    public int? Orientation { get; set; }
+    public double? FNumber { get; set; }
+    public int? IsoSpeed { get; set; }
+    /// <summary>Human EXIF exposure like "1/250" or "2.5".</summary>
+    public string? ExposureTime { get; set; }
+    public double? FocalLengthMm { get; set; }
+    /// <summary>Video duration; null for stills.</summary>
+    public double? DurationSeconds { get; set; }
     public bool MetadataLoaded { get; set; }
 }
 

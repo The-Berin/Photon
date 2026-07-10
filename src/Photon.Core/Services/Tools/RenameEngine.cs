@@ -9,13 +9,12 @@ namespace Photon.Core.Services;
 
 /// <summary>
 /// Batch rename engine (feature 1): pure planning plus journaled execution.
-/// Pipeline order matches the <see cref="RenameOptions"/> doc: pattern → find/replace →
-/// remove → insert → strip/trim → case → prefix/suffix → collision handling.
+/// Pipeline order matches the <see cref="RenameOptions"/> doc: pattern → swap →
+/// find/replace → removes → inserts → hygiene → case → affixes → extension ops →
+/// sanitize → collision handling.
 /// </summary>
 public sealed class RenameEngine : IRenameEngine
 {
-    private static readonly Regex BracketedText = new(@"\([^()]*\)|\[[^\[\]]*\]|\{[^{}]*\}",
-        RegexOptions.Compiled | RegexOptions.CultureInvariant);
     private static readonly Regex MultiSpace = new(@" {2,}", RegexOptions.Compiled);
     private static readonly TimeSpan RegexTimeout = TimeSpan.FromSeconds(2);
 
@@ -36,41 +35,36 @@ public sealed class RenameEngine : IRenameEngine
 
     public List<RenamePlanItem> BuildPlan(IReadOnlyList<string> files, RenameOptions options)
     {
-        var plan = new List<RenamePlanItem>();
-        var include = ToolsCommon.CompileMask(options.IncludeMask);
-        var exclude = ToolsCommon.CompileMask(options.ExcludeMask);
-        bool usesCounter = options.Pattern.Contains("{counter}", StringComparison.Ordinal);
-        int globalCounter = options.CounterStart;
-        var folderCounters = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
-        // New full paths claimed by earlier rows, so in-plan collisions are caught
-        // (case-insensitively, matching Windows) before any disk change happens.
-        var plannedTargets = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        string? maskProblem = null;
+        var include = CompileMaskChecked(options.IncludeMask, options.UseRegexMasks, ref maskProblem);
+        var exclude = CompileMaskChecked(options.ExcludeMask, options.UseRegexMasks, ref maskProblem);
 
+        var selected = new List<string>();
+        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         foreach (var path in files)
         {
             if (!seen.Add(path)) continue;
+            var name = Path.GetFileName(path);
+            if (include is not null && !include.IsMatch(name)) continue;
+            if (exclude is not null && exclude.IsMatch(name)) continue;
+            if (!PassesFileFilters(path, options)) continue;
+            selected.Add(path);
+        }
+
+        var counters = AssignCounters(selected, options);
+
+        var plan = new List<RenamePlanItem>();
+        // New full paths claimed by earlier rows, so in-plan collisions are caught
+        // (case-insensitively, matching Windows) before any disk change happens.
+        var plannedTargets = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+        foreach (var path in selected)
+        {
             var originalName = Path.GetFileName(path);
-            if (include is not null && !include.IsMatch(originalName)) continue;
-            if (exclude is not null && exclude.IsMatch(originalName)) continue;
-
             var dir = Path.GetDirectoryName(path) ?? "";
-            int counter = 0;
-            if (usesCounter)
-            {
-                if (options.CounterPerFolder)
-                {
-                    if (!folderCounters.TryGetValue(dir, out counter)) counter = options.CounterStart;
-                    folderCounters[dir] = counter + options.CounterStep;
-                }
-                else
-                {
-                    counter = globalCounter;
-                    globalCounter += options.CounterStep;
-                }
-            }
+            var (counter, counter2) = counters.TryGetValue(path, out var c) ? c : (0, 0);
 
-            var (newName, problem) = BuildNewName(path, counter, options);
+            var (newName, problem) = BuildNewName(path, counter, counter2, options);
 
             if (problem is null && !string.Equals(newName, originalName, StringComparison.Ordinal))
             {
@@ -88,7 +82,7 @@ public sealed class RenameEngine : IRenameEngine
                     switch (options.ConflictPolicy)
                     {
                         case RenameConflictPolicy.AppendNumber:
-                            newPath = PathSanitizer.MakeUnique(newPath, TargetTaken);
+                            newPath = MakeUniqueWithTemplate(newPath, options.CollisionSuffixFormat, TargetTaken);
                             newName = Path.GetFileName(newPath);
                             break;
                         case RenameConflictPolicy.Skip:
@@ -101,6 +95,11 @@ public sealed class RenameEngine : IRenameEngine
                     }
                 }
             }
+
+            // An unparseable regex mask blocks the whole batch and is flagged on every row
+            // so the UI cannot miss it (the masks themselves were ignored above).
+            if (maskProblem is not null)
+                problem = problem is null ? maskProblem : $"{maskProblem}; {problem}";
 
             var item = new RenamePlanItem { OldPath = path, NewName = newName, Problem = problem };
             if (item.Changed && item.Problem is null) plannedTargets.Add(item.NewPath);
@@ -138,14 +137,36 @@ public sealed class RenameEngine : IRenameEngine
                 if (ct.IsCancellationRequested) break;
                 try
                 {
+                    // The disk may have changed since planning; re-check and resolve per policy.
+                    bool TakenOnDisk(string candidate) =>
+                        !string.Equals(candidate, row.OldPath, StringComparison.OrdinalIgnoreCase)
+                        && (File.Exists(candidate) || Directory.Exists(candidate));
+
+                    var targetPath = row.NewPath;
+                    if (TakenOnDisk(targetPath))
+                    {
+                        if (options.ConflictPolicy == RenameConflictPolicy.AppendNumber)
+                        {
+                            targetPath = MakeUniqueWithTemplate(targetPath, options.CollisionSuffixFormat, TakenOnDisk);
+                        }
+                        else
+                        {
+                            if (options.ConflictPolicy == RenameConflictPolicy.Fail)
+                                result.Errors.Add((row.OldPath, "target exists"));
+                            else
+                                result.Skipped++;
+                            continue;
+                        }
+                    }
+
                     long size = 0;
                     try { size = new FileInfo(row.OldPath).Length; } catch { /* size is best-effort */ }
-                    MoveHonoringCase(row.OldPath, row.NewPath);
+                    MoveHonoringCase(row.OldPath, targetPath);
                     journal.Entries.Add(new JournalEntry
                     {
                         Operation = JournalOperation.RenamedInPlace,
                         OriginalPath = row.OldPath,
-                        NewPath = row.NewPath,
+                        NewPath = targetPath,
                         SizeBytes = size,
                     });
                     result.Renamed++;
@@ -155,10 +176,13 @@ public sealed class RenameEngine : IRenameEngine
                 {
                     result.Errors.Add((row.OldPath, ex.Message));
                 }
-                done++;
-                progress?.Report(ToolsCommon.MakeProgress(row.OldPath, done, rows.Count, bytes, 0, stopwatch));
-                // A crash mid-run must not lose the record of renames already applied.
-                checkpoint.MaybeSave();
+                finally
+                {
+                    done++;
+                    progress?.Report(ToolsCommon.MakeProgress(row.OldPath, done, rows.Count, bytes, 0, stopwatch));
+                    // A crash mid-run must not lose the record of renames already applied.
+                    checkpoint.MaybeSave();
+                }
             }
         }, CancellationToken.None);
 
@@ -166,6 +190,7 @@ public sealed class RenameEngine : IRenameEngine
         {
             await _journal.SaveAsync(journal, CancellationToken.None);
             result.JournalPath = ToolsCommon.JournalFilePath(_journal, journal);
+            if (options.ExportMappingCsv) WriteMappingCsv(journal, result);
         }
         return result;
     }
@@ -189,131 +214,359 @@ public sealed class RenameEngine : IRenameEngine
         catch { File.Move(temp, oldPath); throw; }
     }
 
-    private (string NewName, string? Problem) BuildNewName(string path, int counter, RenameOptions options)
+    // ---------- scope filters ----------
+
+    /// <summary>Wildcard masks compile as before; regex masks that do not parse null out and set the problem.</summary>
+    private static Regex? CompileMaskChecked(string mask, bool useRegex, ref string? problem)
     {
-        var originalName = Path.GetFileName(path);
-
-        var ctx = new RenameTokenContext(path, counter, options, _metadata, _dates);
-        var stem = RenameTokens.Expand(options.Pattern, ctx);
-        if (ctx.Problem is not null) return (originalName, ctx.Problem);
-
-        string? problem = null;
-        stem = ApplyReplacements(stem, options.Replacements, ref problem);
-        if (problem is not null) return (originalName, problem);
-
-        stem = ApplyRemoveRange(stem, options.RemoveRange);
-        if (options.RemoveNumbers) stem = new string([.. stem.Where(c => !char.IsDigit(c))]);
-        if (options.RemoveBracketedText) stem = RemoveBracketed(stem);
-        stem = ApplyInsert(stem, options.Insert);
-
-        foreach (var c in options.StripCharacters)
-            stem = stem.Replace(c.ToString(), "", StringComparison.Ordinal);
-        if (options.TrimWhitespace) stem = stem.Trim();
-        if (options.CollapseSpaces) stem = MultiSpace.Replace(stem, " ");
-        if (options.RemoveDiacritics) stem = RemoveDiacritics(stem);
-        if (options.ReplaceSpacesWith is not null)
-            stem = stem.Replace(" ", options.ReplaceSpacesWith, StringComparison.Ordinal);
-
-        stem = ApplyCase(stem, options.NameCase);
-        stem = options.Prefix + stem + options.Suffix;
-        stem = PathSanitizer.SanitizeSegment(stem);
-
-        var ext = Path.GetExtension(path);
-        var extText = ext.Length > 1 ? ApplyCase(ext[1..], options.ExtensionCase) : "";
-        return (extText.Length > 0 ? stem + "." + extText : stem, null);
+        if (string.IsNullOrWhiteSpace(mask)) return null;
+        if (!useRegex) return ToolsCommon.CompileMask(mask);
+        try
+        {
+            return new Regex(mask, RegexOptions.IgnoreCase | RegexOptions.CultureInvariant, RegexTimeout);
+        }
+        catch (ArgumentException)
+        {
+            var message = $"[invalid mask] {mask}";
+            problem = problem is null ? message : $"{problem}; {message}";
+            return null;
+        }
     }
 
-    private static string ApplyReplacements(string stem, List<FindReplaceRule> rules, ref string? problem)
+    private bool PassesFileFilters(string path, RenameOptions o)
     {
-        foreach (var rule in rules)
+        if (o.SkipHiddenSystem)
         {
-            if (!rule.Enabled || rule.Find.Length == 0) continue;
-            if (rule.UseRegex)
+            try
             {
-                try
-                {
-                    var flags = RegexOptions.CultureInvariant
-                        | (rule.CaseSensitive ? RegexOptions.None : RegexOptions.IgnoreCase);
-                    stem = Regex.Replace(stem, rule.Find, rule.Replace, flags, RegexTimeout);
-                }
-                catch (ArgumentException)
-                {
-                    problem = $"invalid regex: {rule.Find}";
-                    return stem;
-                }
-                catch (RegexMatchTimeoutException)
-                {
-                    problem = $"regex timed out: {rule.Find}";
-                    return stem;
-                }
+                var attrs = File.GetAttributes(path);
+                if ((attrs & (FileAttributes.Hidden | FileAttributes.System)) != 0) return false;
+            }
+            catch { /* attributes unreadable: keep the file in scope */ }
+        }
+        if (o.MinSizeBytes > 0 || o.MaxSizeBytes > 0 || o.ModifiedAfter is not null || o.ModifiedBefore is not null)
+        {
+            try
+            {
+                var info = new FileInfo(path);
+                if (o.MinSizeBytes > 0 && info.Length < o.MinSizeBytes) return false;
+                if (o.MaxSizeBytes > 0 && info.Length > o.MaxSizeBytes) return false;
+                if (o.ModifiedAfter is DateTime after && info.LastWriteTime < after) return false;
+                if (o.ModifiedBefore is DateTime before && info.LastWriteTime > before) return false;
+            }
+            catch { /* unreadable file info: keep the file in scope */ }
+        }
+        if (o.OnlyWithExif && !HasMetadataDate(path)) return false;
+        return true;
+    }
+
+    private bool HasMetadataDate(string path)
+    {
+        try
+        {
+            var media = new MediaFile
+            {
+                FilePath = path,
+                IsVideo = ScanFilter.DefaultVideoExtensions.Contains(Path.GetExtension(path).ToLowerInvariant()),
+            };
+            _metadata.Populate(media);
+            return media.ExifDate is not null;
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
+    // ---------- numbering ----------
+
+    /// <summary>
+    /// Assigns each file its {counter} and {counter2} values in NumberingOrder. Only
+    /// {counter} honors CounterPerFolder; {counter2} always counts across the whole batch.
+    /// </summary>
+    private static Dictionary<string, (int Counter, int Counter2)> AssignCounters(
+        List<string> files, RenameOptions o)
+    {
+        var result = new Dictionary<string, (int, int)>(StringComparer.OrdinalIgnoreCase);
+        bool usesCounters = o.Pattern.Contains("{counter}", StringComparison.Ordinal)
+                         || o.Pattern.Contains("{counter2}", StringComparison.Ordinal);
+        if (!usesCounters) return result;
+
+        int global = o.CounterStart;
+        int counter2 = o.Counter2Start;
+        var folderCounters = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+        foreach (var path in OrderForNumbering(files, o.NumberingOrder))
+        {
+            int counter;
+            if (o.CounterPerFolder)
+            {
+                var dir = Path.GetDirectoryName(path) ?? "";
+                if (!folderCounters.TryGetValue(dir, out counter)) counter = o.CounterStart;
+                folderCounters[dir] = counter + o.CounterStep;
             }
             else
             {
-                stem = stem.Replace(rule.Find, rule.Replace,
-                    rule.CaseSensitive ? StringComparison.Ordinal : StringComparison.OrdinalIgnoreCase);
+                counter = global;
+                global += o.CounterStep;
             }
+            result[path] = (counter, counter2);
+            counter2 += o.Counter2Step;
+        }
+        return result;
+    }
+
+    private static IEnumerable<string> OrderForNumbering(List<string> files, NumberingOrder order) => order switch
+    {
+        NumberingOrder.NameAscending => files.OrderBy(Path.GetFileName, StringComparer.OrdinalIgnoreCase),
+        NumberingOrder.NameDescending => files.OrderByDescending(Path.GetFileName, StringComparer.OrdinalIgnoreCase),
+        NumberingOrder.DateAscending => files.OrderBy(BestDate),
+        NumberingOrder.DateDescending => files.OrderByDescending(BestDate),
+        NumberingOrder.SizeAscending => files.OrderBy(SafeLength),
+        NumberingOrder.SizeDescending => files.OrderByDescending(SafeLength),
+        NumberingOrder.PathAscending => files.OrderBy(p => p, StringComparer.OrdinalIgnoreCase),
+        _ => files, // AsListed
+    };
+
+    /// <summary>min(created, modified) — same heuristic as DateResolver; unreadable files sort last.</summary>
+    private static DateTime BestDate(string path)
+    {
+        try
+        {
+            var info = new FileInfo(path);
+            return info.CreationTime <= info.LastWriteTime ? info.CreationTime : info.LastWriteTime;
+        }
+        catch
+        {
+            return DateTime.MaxValue;
+        }
+    }
+
+    private static long SafeLength(string path)
+    {
+        try { return new FileInfo(path).Length; }
+        catch { return 0; }
+    }
+
+    // ---------- name pipeline ----------
+
+    private (string NewName, string? Problem) BuildNewName(string path, int counter, int counter2,
+        RenameOptions options)
+    {
+        var originalName = Path.GetFileName(path);
+
+        var ctx = new RenameTokenContext(path, counter, counter2, options, _metadata, _dates);
+        var stem = RenameTokens.Expand(options.Pattern, ctx);
+        if (ctx.Problem is not null) return (originalName, ctx.Problem);
+
+        var originalExt = Path.GetExtension(path);
+        var ext = originalExt.Length > 1 ? originalExt[1..] : "";
+
+        if (options.SwapEnabled) stem = RenameTextOps.SwapAroundSeparator(stem, options.SwapSeparator);
+
+        string? problem = null;
+        (stem, ext) = ApplyReplacements(stem, ext, options.Replacements, ref problem);
+        if (problem is not null) return (originalName, problem);
+
+        stem = ApplyRemoves(stem, options);
+        stem = RenameTextOps.ApplyInsert(stem, options.Insert);
+        stem = RenameTextOps.ApplyInsert(stem, options.Insert2);
+        stem = ApplyHygiene(stem, options);
+        stem = RenameTextOps.ApplyNameCase(stem, options);
+        stem = ApplyAffixes(stem, path, options);
+        ext = ApplyExtensionOps(ext, path, options);
+        ext = RenameTextOps.ApplyCase(ext, options.ExtensionCase);
+
+        stem = PathSanitizer.SanitizeSegment(stem);
+        ext = RenameTextOps.SanitizeExtension(ext);
+        return (ext.Length > 0 ? stem + "." + ext : stem, null);
+    }
+
+    private static string ApplyRemoves(string stem, RenameOptions o)
+    {
+        stem = RenameTextOps.ApplyRemoveRange(stem, o.RemoveRange);
+        stem = RenameTextOps.ApplyRemoveRange(stem, o.RemoveRange2);
+        stem = RenameTextOps.ApplyRemoveBetween(stem, o.RemoveBetween);
+        if (o.RemoveCameraPrefixes) stem = RenameTextOps.RemoveCameraPrefixes(stem);
+        if (o.RemoveDatePatterns) stem = RenameTextOps.RemoveDatePatterns(stem);
+        if (o.RemoveGuidPatterns) stem = RenameTextOps.RemoveGuidPatterns(stem);
+        if (o.RemoveUrls) stem = RenameTextOps.RemoveUrls(stem);
+        if (o.RemoveWords.Length > 0) stem = RenameTextOps.RemoveWords(stem, o.RemoveWords);
+        if (o.RemoveBracketedText) stem = RenameTextOps.RemoveBracketed(stem);
+        if (o.RemoveNumbers)
+        {
+            stem = new string([.. stem.Where(c => !char.IsDigit(c))]);
+        }
+        else
+        {
+            if (o.RemoveLeadingNumbers) stem = RenameTextOps.RemoveLeadingDigits(stem);
+            if (o.RemoveTrailingNumbers) stem = RenameTextOps.RemoveTrailingDigits(stem);
+        }
+        if (o.RemovePunctuation) stem = RenameTextOps.RemovePunctuation(stem);
+        if (o.RemoveNonAscii) stem = RenameTextOps.RemoveNonAscii(stem);
+        if (o.RemoveEmoji) stem = RenameTextOps.RemoveEmoji(stem);
+        foreach (var c in o.StripCharacters)
+            stem = stem.Replace(c.ToString(), "", StringComparison.Ordinal);
+        return stem;
+    }
+
+    private static string ApplyHygiene(string stem, RenameOptions o)
+    {
+        if (o.PadNumberRunsTo > 0) stem = RenameTextOps.PadNumberRuns(stem, o.PadNumberRunsTo);
+        if (o.ReplaceUnderscoresWithSpaces) stem = stem.Replace('_', ' ');
+        if (o.ReplaceDotsWithSpaces) stem = stem.Replace('.', ' '); // stem only — never the extension dot
+        if (o.CollapseRepeatedSeparators) stem = RenameTextOps.CollapseRepeatedSeparators(stem);
+        if (o.ReplaceSpacesWith is not null)
+            stem = stem.Replace(" ", o.ReplaceSpacesWith, StringComparison.Ordinal);
+        if (o.CollapseSpaces) stem = MultiSpace.Replace(stem, " ");
+        if (o.RemoveDiacritics) stem = RenameTextOps.RemoveDiacritics(stem);
+        if (o.TransliterateToAscii) stem = RenameTextOps.TransliterateToAscii(stem);
+        if (o.TrimSeparators) stem = RenameTextOps.TrimSeparators(stem);
+        if (o.TrimWhitespace) stem = stem.Trim();
+        if (o.MaxNameLength > 0) stem = RenameTextOps.Truncate(stem, o.MaxNameLength, o.TruncateFrom);
+        return stem;
+    }
+
+    /// <summary>Prefix, then parent folder in front of it (parent + prefix + name), then suffix.</summary>
+    private static string ApplyAffixes(string stem, string path, RenameOptions o)
+    {
+        if (o.Prefix.Length > 0
+            && !(o.PrefixOnlyIfMissing && stem.StartsWith(o.Prefix, StringComparison.OrdinalIgnoreCase)))
+            stem = o.Prefix + stem;
+        if (o.Suffix.Length > 0
+            && !(o.SuffixOnlyIfMissing && stem.EndsWith(o.Suffix, StringComparison.OrdinalIgnoreCase)))
+            stem += o.Suffix;
+        if (o.ParentFolderAsPrefix)
+        {
+            var dir = Path.GetDirectoryName(path);
+            var parent = dir is null ? "" : Path.GetFileName(Path.TrimEndingDirectorySeparator(dir));
+            if (parent.Length > 0)
+                stem = PathSanitizer.SanitizeSegment(parent) + o.ParentPrefixSeparator + stem;
         }
         return stem;
     }
 
+    /// <summary>Precedence: RemoveExtension &gt; NewExtension &gt; FixExtensionBySniffing &gt; NormalizeExtensions.</summary>
+    private static string ApplyExtensionOps(string ext, string path, RenameOptions o)
+    {
+        if (o.RemoveExtension) return "";
+        var replacement = o.NewExtension.Trim();
+        if (replacement.Length > 0) return replacement.TrimStart('.');
+
+        bool corrected = false;
+        if (o.FixExtensionBySniffing)
+        {
+            var sniffed = ExtensionSniffer.Sniff(path);
+            if (sniffed is not null && !ExtensionSniffer.MatchesSniffed(sniffed, ext))
+            {
+                ext = sniffed;
+                corrected = true;
+            }
+        }
+        if (!corrected && o.NormalizeExtensions) ext = ExtensionSniffer.Normalize(ext);
+        return ext;
+    }
+
+    // ---------- find & replace ----------
+
+    private static (string Stem, string Ext) ApplyReplacements(string stem, string ext,
+        List<FindReplaceRule> rules, ref string? problem)
+    {
+        foreach (var rule in rules)
+        {
+            if (!rule.Enabled || rule.Find.Length == 0) continue;
+            if (rule.Target != ReplaceTarget.ExtensionOnly)
+            {
+                stem = ApplyOneReplacement(stem, rule, ref problem);
+                if (problem is not null) return (stem, ext);
+            }
+            if (rule.Target != ReplaceTarget.NameOnly)
+            {
+                ext = ApplyOneReplacement(ext, rule, ref problem);
+                if (problem is not null) return (stem, ext);
+            }
+        }
+        return (stem, ext);
+    }
+
+    private static string ApplyOneReplacement(string text, FindReplaceRule rule, ref string? problem)
+    {
+        if (rule.UseRegex || rule.WholeWord)
+        {
+            // WholeWord is a literal find wrapped in word boundaries (regex rules ignore the flag);
+            // its replacement text must not be treated as a substitution pattern.
+            var pattern = rule.UseRegex ? rule.Find : @"\b" + Regex.Escape(rule.Find) + @"\b";
+            var replacement = rule.UseRegex ? rule.Replace : rule.Replace.Replace("$", "$$");
+            try
+            {
+                var flags = RegexOptions.CultureInvariant
+                    | (rule.CaseSensitive ? RegexOptions.None : RegexOptions.IgnoreCase);
+                var regex = new Regex(pattern, flags, RegexTimeout);
+                return rule.FirstOnly ? regex.Replace(text, replacement, 1) : regex.Replace(text, replacement);
+            }
+            catch (ArgumentException)
+            {
+                problem = $"invalid regex: {rule.Find}";
+            }
+            catch (RegexMatchTimeoutException)
+            {
+                problem = $"regex timed out: {rule.Find}";
+            }
+            return text;
+        }
+        var comparison = rule.CaseSensitive ? StringComparison.Ordinal : StringComparison.OrdinalIgnoreCase;
+        if (rule.FirstOnly)
+        {
+            int idx = text.IndexOf(rule.Find, comparison);
+            return idx < 0 ? text : text[..idx] + rule.Replace + text[(idx + rule.Find.Length)..];
+        }
+        return text.Replace(rule.Find, rule.Replace, comparison);
+    }
+
+    // ---------- collisions & mapping ----------
+
     /// <summary>
-    /// Start is a 0-based offset from the front; with FromEnd the removed range instead
-    /// ends Start characters before the end of the name. Out-of-range values are clamped.
+    /// Appends the collision suffix template ({n} = attempt number) before the extension until
+    /// the name is free. A template without {n} gets the number appended after it.
     /// </summary>
-    private static string ApplyRemoveRange(string stem, RemoveRangeRule rule)
+    private static string MakeUniqueWithTemplate(string fullPath, string template, Func<string, bool> taken)
     {
-        if (!rule.Enabled || rule.Count <= 0 || stem.Length == 0) return stem;
-        int start = rule.FromEnd ? stem.Length - rule.Start - rule.Count : rule.Start;
-        int count = rule.Count;
-        if (start < 0) { count += start; start = 0; }
-        if (start >= stem.Length || count <= 0) return stem;
-        count = Math.Min(count, stem.Length - start);
-        return stem.Remove(start, count);
-    }
-
-    private static string RemoveBracketed(string stem)
-    {
-        // Innermost-first so nested brackets collapse fully.
-        string previous;
-        do
+        if (!taken(fullPath)) return fullPath;
+        var dir = Path.GetDirectoryName(fullPath) ?? "";
+        var stem = Path.GetFileNameWithoutExtension(fullPath);
+        var ext = Path.GetExtension(fullPath);
+        var suffix = string.IsNullOrEmpty(template) ? "_{n}" : template;
+        if (!suffix.Contains("{n}", StringComparison.Ordinal)) suffix += "{n}";
+        for (int i = 1; ; i++)
         {
-            previous = stem;
-            stem = BracketedText.Replace(stem, "");
-        } while (!string.Equals(stem, previous, StringComparison.Ordinal));
-        return stem;
+            var rendered = suffix.Replace("{n}", i.ToString(CultureInfo.InvariantCulture), StringComparison.Ordinal);
+            var candidate = Path.Combine(dir, stem + rendered + ext);
+            if (!taken(candidate)) return candidate;
+        }
     }
 
-    private static string ApplyInsert(string stem, InsertRule rule)
+    /// <summary>Writes the old→new mapping CSV next to the first renamed file (best-effort).</summary>
+    private static void WriteMappingCsv(SortJournal journal, RenameResult result)
     {
-        if (!rule.Enabled || rule.Text.Length == 0) return stem;
-        int position = rule.FromEnd ? stem.Length - rule.Position : rule.Position;
-        return stem.Insert(Math.Clamp(position, 0, stem.Length), rule.Text);
-    }
-
-    private static string ApplyCase(string s, CaseTransform transform) => transform switch
-    {
-        CaseTransform.Lower => s.ToLowerInvariant(),
-        CaseTransform.Upper => s.ToUpperInvariant(),
-        // ToTitleCase leaves ALL-CAPS words alone, so lower-case first.
-        CaseTransform.TitleCase => CultureInfo.InvariantCulture.TextInfo.ToTitleCase(s.ToLowerInvariant()),
-        CaseTransform.SentenceCase => s.Length == 0 ? s : char.ToUpperInvariant(s[0]) + s[1..].ToLowerInvariant(),
-        CaseTransform.InvertCase => string.Create(s.Length, s, static (span, src) =>
+        var csvPath = "";
+        try
         {
-            for (int i = 0; i < src.Length; i++)
-                span[i] = char.IsUpper(src[i]) ? char.ToLowerInvariant(src[i])
-                        : char.IsLower(src[i]) ? char.ToUpperInvariant(src[i])
-                        : src[i];
-        }),
-        _ => s,
-    };
-
-    private static string RemoveDiacritics(string s)
-    {
-        var decomposed = s.Normalize(NormalizationForm.FormD);
-        var sb = new StringBuilder(decomposed.Length);
-        foreach (var c in decomposed)
-            if (CharUnicodeInfo.GetUnicodeCategory(c) != UnicodeCategory.NonSpacingMark)
-                sb.Append(c);
-        return sb.ToString().Normalize(NormalizationForm.FormC);
+            var dir = Path.GetDirectoryName(journal.Entries[0].NewPath) ?? journal.SourceFolder;
+            var stamp = DateTime.Now.ToString("yyyyMMdd-HHmmss", CultureInfo.InvariantCulture);
+            csvPath = Path.Combine(dir, $"photon-rename-map-{stamp}.csv");
+            var lines = new List<string>(journal.Entries.Count + 1) { "old_path,new_path" };
+            foreach (var entry in journal.Entries)
+                lines.Add(CsvField(entry.OriginalPath) + "," + CsvField(entry.NewPath ?? ""));
+            File.WriteAllLines(csvPath, lines, new UTF8Encoding(encoderShouldEmitUTF8Identifier: false));
+            result.MappingCsvPath = csvPath;
+        }
+        catch (Exception ex)
+        {
+            result.Errors.Add((csvPath.Length > 0 ? csvPath : "mapping csv", "Could not write mapping CSV: " + ex.Message));
+        }
     }
+
+    private static string CsvField(string value) =>
+        value.IndexOfAny([',', '"', '\r', '\n']) >= 0
+            ? "\"" + value.Replace("\"", "\"\"") + "\""
+            : value;
 }

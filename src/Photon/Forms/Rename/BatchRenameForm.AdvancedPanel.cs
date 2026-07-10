@@ -1,56 +1,69 @@
 using System.Text.RegularExpressions;
+using Photon.App.Services;
 
 namespace Photon.App.Forms;
 
+/// <summary>
+/// Advanced mode — a seven-tab control center binding every RenameOptions field.
+/// This file owns the shell, the "Pattern &amp; numbering" and "Find &amp; replace" tabs,
+/// and the rules-grid plumbing; the other five tabs live in BatchRenameForm.AdvancedPanel.Tabs.cs.
+/// </summary>
 public partial class BatchRenameForm
 {
+    private const int AdvGroupWidth = 468;
+
+    // ----- Tab 1: Pattern & numbering -----
     private TextBox _txtAdvPattern = null!;
     private ComboBox _cmbDateSource = null!;
-
     private NumericUpDown _numAdvStart = null!;
     private NumericUpDown _numAdvStep = null!;
     private NumericUpDown _numAdvPad = null!;
+    private ComboBox _cmbCounterStyle = null!;
     private CheckBox _chkCounterPerFolder = null!;
+    private NumericUpDown _numCounter2Start = null!;
+    private NumericUpDown _numCounter2Step = null!;
+    private NumericUpDown _numCounter2Pad = null!;
+    private ComboBox _cmbNumberingOrder = null!;
 
+    // ----- Tab 2: Find & replace -----
     private DataGridView _rulesGrid = null!;
     private Label _lblRulesStatus = null!;
-    private const int RuleColOn = 0, RuleColFind = 1, RuleColReplace = 2, RuleColRegex = 3, RuleColCase = 4;
-
-    private CheckBox _chkRemoveRange = null!;
-    private NumericUpDown _numRemoveStart = null!;
-    private NumericUpDown _numRemoveCount = null!;
-    private CheckBox _chkRemoveFromEnd = null!;
-    private CheckBox _chkRemoveNumbers = null!;
-    private CheckBox _chkRemoveBrackets = null!;
-
-    private CheckBox _chkInsert = null!;
-    private TextBox _txtInsertText = null!;
-    private NumericUpDown _numInsertPos = null!;
-    private CheckBox _chkInsertFromEnd = null!;
-
-    private CheckBox _chkTrim = null!;
-    private CheckBox _chkCollapse = null!;
-    private CheckBox _chkDiacritics = null!;
-    private TextBox _txtStrip = null!;
-    private CheckBox _chkReplaceSpaces = null!;
-    private TextBox _txtReplaceSpacesWith = null!;
-
-    private ComboBox _cmbAdvNameCase = null!;
-    private ComboBox _cmbAdvExtCase = null!;
-
-    private TextBox _txtAdvPrefix = null!;
-    private TextBox _txtAdvSuffix = null!;
-
-    private RadioButton _radConflictAppend = null!;
-    private RadioButton _radConflictSkip = null!;
-    private RadioButton _radConflictFail = null!;
-
-    private TextBox _txtAdvIncludeMask = null!;
-    private TextBox _txtAdvExcludeMask = null!;
-    private CheckBox _chkAdvSubfolders = null!;
+    private const int RuleColOn = 0, RuleColFind = 1, RuleColReplace = 2, RuleColRegex = 3,
+        RuleColCase = 4, RuleColWord = 5, RuleColFirst = 6, RuleColTarget = 7;
+    private CheckBox _chkSwap = null!;
+    private TextBox _txtSwapSeparator = null!;
 
     private void BuildAdvancedPanel()
     {
+        var tabs = new TabControl { Dock = DockStyle.Fill, Multiline = true };
+
+        BuildPatternTab(tabs);
+        BuildFindReplaceTab(tabs);
+        BuildRemoveTab(tabs);
+        BuildInsertHygieneTab(tabs);
+        BuildCaseAffixTab(tabs);
+        BuildExtensionScopeTab(tabs);
+        BuildSafetyTab(tabs);
+
+        _advancedHost.Controls.Add(tabs);
+
+        // Enable/disable relationships between controls; re-evaluated on every relevant toggle.
+        _chkSwap.CheckedChanged += (_, _) => UpdateAdvancedInterlocks();
+        _chkReplaceSpaces.CheckedChanged += (_, _) => UpdateAdvancedInterlocks();
+        _chkSmartTitle.CheckedChanged += (_, _) => UpdateAdvancedInterlocks();
+        _chkParentPrefix.CheckedChanged += (_, _) => UpdateAdvancedInterlocks();
+        _chkRemoveExtension.CheckedChanged += (_, _) => UpdateAdvancedInterlocks();
+        _cmbInsertAnchor.SelectedIndexChanged += (_, _) => UpdateAdvancedInterlocks();
+        _cmbInsert2Anchor.SelectedIndexChanged += (_, _) => UpdateAdvancedInterlocks();
+        _txtCollisionFormat.TextChanged += (_, _) => UpdateCollisionExample();
+        UpdateAdvancedInterlocks();
+        UpdateCollisionExample();
+    }
+
+    /// <summary>Adds a tab page hosting a top-down scrollable stack of group boxes.</summary>
+    private static FlowLayoutPanel NewTabStack(TabControl tabs, string title)
+    {
+        var page = new TabPage(title);
         var stack = new FlowLayoutPanel
         {
             Dock = DockStyle.Fill,
@@ -59,40 +72,94 @@ public partial class BatchRenameForm
             AutoScroll = true,
             Padding = new Padding(4),
         };
+        page.Controls.Add(stack);
+        tabs.TabPages.Add(page);
+        return stack;
+    }
 
-        // ----- 1. Pattern & date -----
-        var gbPattern = NewGroup("Pattern && date source", 86);
-        _txtAdvPattern = new TextBox { Location = new Point(10, 24), Width = 320, Text = "{name}" };
-        var btnToken = new Button { Text = "Insert token ▾", Location = new Point(336, 22), Width = 100 };
+    private static GroupBox NewAdvGroup(string title, int height) => new()
+    {
+        Text = title,
+        Width = AdvGroupWidth,
+        Height = height,
+        Margin = new Padding(3, 3, 3, 6),
+    };
+
+    // ---------- Tab 1: Pattern & numbering ----------
+
+    private void BuildPatternTab(TabControl tabs)
+    {
+        var stack = NewTabStack(tabs, "Pattern & numbering");
+
+        var gbPattern = NewAdvGroup("Pattern && date source", 88);
+        _txtAdvPattern = new TextBox { Location = new Point(10, 24), Width = 340, Text = "{name}" };
+        var btnToken = new Button { Text = "Insert token ▾", Location = new Point(356, 22), Width = 100 };
         var tokenMenu = TokenCatalog.BuildInsertMenu(_txtAdvPattern);
         btnToken.Click += (_, _) => tokenMenu.Show(btnToken, new Point(0, btnToken.Height));
         gbPattern.Controls.Add(NewInlineLabel("Date tokens use:", 10, 57));
         _cmbDateSource = new ComboBox
         {
-            Location = new Point(112, 53), Width = 218, DropDownStyle = ComboBoxStyle.DropDownList,
+            Location = new Point(112, 53), Width = 230, DropDownStyle = ComboBoxStyle.DropDownList,
         };
         // Order mirrors the DateSource enum.
         _cmbDateSource.Items.AddRange(["EXIF date, then file date", "EXIF date only", "File date, then EXIF", "File date only"]);
         _cmbDateSource.SelectedIndex = 0;
         gbPattern.Controls.AddRange([_txtAdvPattern, btnToken, _cmbDateSource]);
 
-        // ----- 2. Counter -----
-        var gbCounter = NewGroup("Counter — {counter}", 84);
+        var gbCounter = NewAdvGroup("Counter — {counter}", 112);
         gbCounter.Controls.Add(NewInlineLabel("Start:", 10, 27));
-        _numAdvStart = new NumericUpDown { Location = new Point(50, 24), Width = 78, Minimum = 0, Maximum = 1_000_000_000, Value = 1 };
-        gbCounter.Controls.Add(NewInlineLabel("Step:", 146, 27));
-        _numAdvStep = new NumericUpDown { Location = new Point(182, 24), Width = 58, Minimum = 1, Maximum = 1_000_000, Value = 1 };
+        _numAdvStart = new NumericUpDown { Location = new Point(52, 24), Width = 78, Minimum = 0, Maximum = 1_000_000_000, Value = 1 };
+        gbCounter.Controls.Add(NewInlineLabel("Step:", 148, 27));
+        _numAdvStep = new NumericUpDown { Location = new Point(184, 24), Width = 56, Minimum = 1, Maximum = 1_000_000, Value = 1 };
         gbCounter.Controls.Add(NewInlineLabel("Padding:", 258, 27));
         _numAdvPad = new NumericUpDown { Location = new Point(314, 24), Width = 54, Minimum = 0, Maximum = 12, Value = 3 };
-        _chkCounterPerFolder = new CheckBox { Text = "Restart the counter in each subfolder", Location = new Point(10, 54), AutoSize = true };
-        gbCounter.Controls.AddRange([_numAdvStart, _numAdvStep, _numAdvPad, _chkCounterPerFolder]);
+        gbCounter.Controls.Add(NewInlineLabel("Style:", 10, 55));
+        _cmbCounterStyle = new ComboBox { Location = new Point(52, 52), Width = 172, DropDownStyle = ComboBoxStyle.DropDownList };
+        // Order mirrors the CounterStyle enum.
+        _cmbCounterStyle.Items.AddRange(["1, 2, 3 (numeric)", "a, b, c", "A, B, C", "i, ii, iii (roman)", "I, II, III (Roman)", "hex — 1f, 20", "HEX — 1F, 20"]);
+        _cmbCounterStyle.SelectedIndex = 0;
+        _tips.SetToolTip(_cmbCounterStyle, "How counter values are rendered — applies to both {counter} and {counter2}.");
+        _chkCounterPerFolder = new CheckBox { Text = "Restart the counter in each subfolder", Location = new Point(10, 82), AutoSize = true };
+        gbCounter.Controls.AddRange([_numAdvStart, _numAdvStep, _numAdvPad, _cmbCounterStyle, _chkCounterPerFolder]);
 
-        // ----- 3. Find & replace rules -----
-        var gbRules = NewGroup("Find && replace rules — applied top to bottom", 244);
+        var gbCounter2 = NewAdvGroup("Counter 2 — {counter2}", 58);
+        gbCounter2.Controls.Add(NewInlineLabel("Start:", 10, 27));
+        _numCounter2Start = new NumericUpDown { Location = new Point(52, 24), Width = 78, Minimum = 0, Maximum = 1_000_000_000, Value = 1 };
+        gbCounter2.Controls.Add(NewInlineLabel("Step:", 148, 27));
+        _numCounter2Step = new NumericUpDown { Location = new Point(184, 24), Width = 56, Minimum = 1, Maximum = 1_000_000, Value = 1 };
+        gbCounter2.Controls.Add(NewInlineLabel("Padding:", 258, 27));
+        _numCounter2Pad = new NumericUpDown { Location = new Point(314, 24), Width = 54, Minimum = 0, Maximum = 12, Value = 2 };
+        _tips.SetToolTip(gbCounter2, "An independent second counter with its own start, step, and padding.");
+        gbCounter2.Controls.AddRange([_numCounter2Start, _numCounter2Step, _numCounter2Pad]);
+
+        var gbOrder = NewAdvGroup("Numbering order", 60);
+        gbOrder.Controls.Add(NewInlineLabel("Assign counters:", 10, 27));
+        _cmbNumberingOrder = new ComboBox { Location = new Point(112, 24), Width = 200, DropDownStyle = ComboBoxStyle.DropDownList };
+        // Order mirrors the NumberingOrder enum.
+        _cmbNumberingOrder.Items.AddRange(["As listed", "Name A → Z", "Name Z → A", "Date, oldest first",
+            "Date, newest first", "Size, smallest first", "Size, largest first", "Full path A → Z"]);
+        _cmbNumberingOrder.SelectedIndex = 0;
+        _tips.SetToolTip(_cmbNumberingOrder, "Which order files receive counter values — the preview grid order itself doesn't change.");
+        gbOrder.Controls.Add(_cmbNumberingOrder);
+
+        stack.Controls.AddRange([gbPattern, gbCounter, gbCounter2, gbOrder]);
+
+        WireChange(_txtAdvPattern, _cmbDateSource,
+            _numAdvStart, _numAdvStep, _numAdvPad, _cmbCounterStyle, _chkCounterPerFolder,
+            _numCounter2Start, _numCounter2Step, _numCounter2Pad, _cmbNumberingOrder);
+    }
+
+    // ---------- Tab 2: Find & replace ----------
+
+    private void BuildFindReplaceTab(TabControl tabs)
+    {
+        var stack = NewTabStack(tabs, "Find & replace");
+
+        var gbRules = NewAdvGroup("Rules — applied top to bottom", 320);
         _rulesGrid = new DataGridView
         {
             Location = new Point(10, 22),
-            Size = new Size(348, 186),
+            Size = new Size(448, 218),
             AllowUserToAddRows = false,
             AllowUserToDeleteRows = false,
             AllowUserToResizeRows = false,
@@ -103,29 +170,43 @@ public partial class BatchRenameForm
             MultiSelect = false,
             ColumnHeadersHeightSizeMode = DataGridViewColumnHeadersHeightSizeMode.AutoSize,
         };
-        _rulesGrid.Columns.Add(new DataGridViewCheckBoxColumn { HeaderText = "On", Width = 32 });
-        _rulesGrid.Columns.Add(new DataGridViewTextBoxColumn { HeaderText = "Find", Width = 116 });
-        _rulesGrid.Columns.Add(new DataGridViewTextBoxColumn { HeaderText = "Replace", Width = 108 });
-        _rulesGrid.Columns.Add(new DataGridViewCheckBoxColumn { HeaderText = "Rx", Width = 32, ToolTipText = "Regular expression" });
-        _rulesGrid.Columns.Add(new DataGridViewCheckBoxColumn { HeaderText = "Aa", Width = 32, ToolTipText = "Case-sensitive" });
+        _rulesGrid.Columns.Add(new DataGridViewCheckBoxColumn { HeaderText = "On", Width = 30 });
+        _rulesGrid.Columns.Add(new DataGridViewTextBoxColumn { HeaderText = "Find", Width = 104 });
+        _rulesGrid.Columns.Add(new DataGridViewTextBoxColumn { HeaderText = "Replace", Width = 98 });
+        _rulesGrid.Columns.Add(new DataGridViewCheckBoxColumn { HeaderText = "Rx", Width = 28, ToolTipText = "Regular expression" });
+        _rulesGrid.Columns.Add(new DataGridViewCheckBoxColumn { HeaderText = "Aa", Width = 28, ToolTipText = "Case-sensitive" });
+        _rulesGrid.Columns.Add(new DataGridViewCheckBoxColumn { HeaderText = "W", Width = 34, ToolTipText = "Whole words only (plain-text rules; regex rules ignore this)" });
+        _rulesGrid.Columns.Add(new DataGridViewCheckBoxColumn { HeaderText = "1st", Width = 30, ToolTipText = "Replace only the first occurrence" });
+        var colTarget = new DataGridViewComboBoxColumn
+        {
+            HeaderText = "Target",
+            Width = 72,
+            FlatStyle = FlatStyle.Flat,
+            ToolTipText = "Which part of the file name this rule touches",
+        };
+        colTarget.Items.AddRange("Name", "Ext", "Both");
+        _rulesGrid.Columns.Add(colTarget);
         foreach (DataGridViewColumn col in _rulesGrid.Columns)
             col.SortMode = DataGridViewColumnSortMode.NotSortable;
 
         _rulesGrid.CurrentCellDirtyStateChanged += (_, _) =>
         {
-            if (_rulesGrid.IsCurrentCellDirty && _rulesGrid.CurrentCell is DataGridViewCheckBoxCell)
+            if (_rulesGrid.IsCurrentCellDirty
+                && _rulesGrid.CurrentCell is DataGridViewCheckBoxCell or DataGridViewComboBoxCell)
                 _rulesGrid.CommitEdit(DataGridViewDataErrorContexts.Commit);
         };
         _rulesGrid.CellValueChanged += (_, _) => { ValidateRules(); RequestPreview(); };
         _rulesGrid.RowsRemoved += (_, _) => { ValidateRules(); RequestPreview(); };
+        // A stray value in the Target combo column must never crash the form.
+        _rulesGrid.DataError += (_, e) => e.ThrowException = false;
 
-        var btnAdd = new Button { Text = "Add", Location = new Point(366, 22), Width = 70 };
-        var btnRemove = new Button { Text = "Remove", Location = new Point(366, 50), Width = 70 };
-        var btnUp = new Button { Text = "Up", Location = new Point(366, 86), Width = 70 };
-        var btnDown = new Button { Text = "Down", Location = new Point(366, 114), Width = 70 };
+        var btnAdd = new Button { Text = "Add", Location = new Point(10, 248), Width = 70 };
+        var btnRemove = new Button { Text = "Remove", Location = new Point(84, 248), Width = 70 };
+        var btnUp = new Button { Text = "Up", Location = new Point(170, 248), Width = 60 };
+        var btnDown = new Button { Text = "Down", Location = new Point(234, 248), Width = 60 };
         btnAdd.Click += (_, _) =>
         {
-            _rulesGrid.Rows.Add(true, "", "", false, false);
+            _rulesGrid.Rows.Add(true, "", "", false, false, false, false, "Name");
             _rulesGrid.CurrentCell = _rulesGrid.Rows[^1].Cells[RuleColFind];
             RequestPreview();
         };
@@ -139,95 +220,28 @@ public partial class BatchRenameForm
 
         _lblRulesStatus = new Label
         {
-            Location = new Point(10, 214),
-            Size = new Size(426, 20),
+            Location = new Point(10, 280),
+            Size = new Size(448, 32),
             ForeColor = SystemColors.GrayText,
             Text = "No rules — add one to start replacing.",
         };
         gbRules.Controls.AddRange([_rulesGrid, btnAdd, btnRemove, btnUp, btnDown, _lblRulesStatus]);
 
-        // ----- 4. Remove -----
-        var gbRemove = NewGroup("Remove", 112);
-        _chkRemoveRange = new CheckBox { Text = "Remove range —", Location = new Point(10, 24), AutoSize = true };
-        gbRemove.Controls.Add(NewInlineLabel("at position:", 128, 26));
-        _numRemoveStart = new NumericUpDown { Location = new Point(196, 22), Width = 54, Minimum = 0, Maximum = 9999 };
-        gbRemove.Controls.Add(NewInlineLabel("count:", 258, 26));
-        _numRemoveCount = new NumericUpDown { Location = new Point(300, 22), Width = 54, Minimum = 0, Maximum = 9999 };
-        _chkRemoveFromEnd = new CheckBox { Text = "from end", Location = new Point(362, 24), AutoSize = true };
-        _chkRemoveNumbers = new CheckBox { Text = "Remove all digits 0-9", Location = new Point(10, 54), AutoSize = true };
-        _chkRemoveBrackets = new CheckBox { Text = "Remove (bracketed) and [bracketed] text", Location = new Point(10, 80), AutoSize = true };
-        gbRemove.Controls.AddRange([_chkRemoveRange, _numRemoveStart, _numRemoveCount, _chkRemoveFromEnd,
-            _chkRemoveNumbers, _chkRemoveBrackets]);
+        var gbSwap = NewAdvGroup("Swap around a separator", 84);
+        _chkSwap = new CheckBox { Text = "Swap the two halves around:", Location = new Point(10, 24), AutoSize = true };
+        _txtSwapSeparator = new TextBox { Location = new Point(196, 22), Width = 80, Text = " - " };
+        var swapHint = new Label
+        {
+            Text = "\"Artist - Title\" becomes \"Title - Artist\" (splits on the first occurrence).",
+            Location = new Point(10, 52),
+            Size = new Size(448, 18),
+            ForeColor = SystemColors.GrayText,
+        };
+        gbSwap.Controls.AddRange([_chkSwap, _txtSwapSeparator, swapHint]);
 
-        // ----- 5. Insert -----
-        var gbInsert = NewGroup("Insert text", 60);
-        _chkInsert = new CheckBox { Text = "Insert", Location = new Point(10, 24), AutoSize = true };
-        _txtInsertText = new TextBox { Location = new Point(72, 22), Width = 140 };
-        gbInsert.Controls.Add(NewInlineLabel("at position:", 220, 26));
-        _numInsertPos = new NumericUpDown { Location = new Point(288, 22), Width = 54, Minimum = 0, Maximum = 9999 };
-        _chkInsertFromEnd = new CheckBox { Text = "from end", Location = new Point(350, 24), AutoSize = true };
-        gbInsert.Controls.AddRange([_chkInsert, _txtInsertText, _numInsertPos, _chkInsertFromEnd]);
+        stack.Controls.AddRange([gbRules, gbSwap]);
 
-        // ----- 6. Hygiene -----
-        var gbHygiene = NewGroup("Name hygiene", 138);
-        _chkTrim = new CheckBox { Text = "Trim leading/trailing whitespace", Location = new Point(10, 22), AutoSize = true, Checked = true };
-        _chkCollapse = new CheckBox { Text = "Collapse repeated spaces", Location = new Point(232, 22), AutoSize = true };
-        _chkDiacritics = new CheckBox { Text = "Remove diacritics (é → e)", Location = new Point(10, 48), AutoSize = true };
-        gbHygiene.Controls.Add(NewInlineLabel("Strip characters:", 10, 80));
-        _txtStrip = new TextBox { Location = new Point(112, 77), Width = 120 };
-        var tips = new ToolTip();
-        tips.SetToolTip(_txtStrip, "Every character typed here is deleted from names, e.g. #&!");
-        _chkReplaceSpaces = new CheckBox { Text = "Replace spaces with:", Location = new Point(10, 106), AutoSize = true };
-        _txtReplaceSpacesWith = new TextBox { Location = new Point(148, 103), Width = 84, Text = "_", Enabled = false };
-        _chkReplaceSpaces.CheckedChanged += (_, _) => _txtReplaceSpacesWith.Enabled = _chkReplaceSpaces.Checked;
-        gbHygiene.Controls.AddRange([_chkTrim, _chkCollapse, _chkDiacritics, _txtStrip, _chkReplaceSpaces, _txtReplaceSpacesWith]);
-
-        // ----- 7. Case -----
-        var gbCase = NewGroup("Case transforms", 60);
-        gbCase.Controls.Add(NewInlineLabel("Name:", 10, 27));
-        _cmbAdvNameCase = NewCaseCombo(56, 24, 156);
-        gbCase.Controls.Add(NewInlineLabel("Extension:", 226, 27));
-        _cmbAdvExtCase = NewCaseCombo(292, 24, 144);
-        gbCase.Controls.AddRange([_cmbAdvNameCase, _cmbAdvExtCase]);
-
-        // ----- 8. Prefix / suffix -----
-        var gbAffix = NewGroup("Prefix / suffix", 60);
-        gbAffix.Controls.Add(NewInlineLabel("Prefix:", 10, 27));
-        _txtAdvPrefix = new TextBox { Location = new Point(56, 24), Width = 156 };
-        gbAffix.Controls.Add(NewInlineLabel("Suffix:", 226, 27));
-        _txtAdvSuffix = new TextBox { Location = new Point(272, 24), Width = 164 };
-        gbAffix.Controls.AddRange([_txtAdvPrefix, _txtAdvSuffix]);
-
-        // ----- 9. Conflicts -----
-        var gbConflict = NewGroup("When the new name already exists", 100);
-        _radConflictAppend = new RadioButton { Text = "Append a number (photo.jpg → photo_1.jpg)", Location = new Point(10, 22), AutoSize = true, Checked = true };
-        _radConflictSkip = new RadioButton { Text = "Skip that file", Location = new Point(10, 46), AutoSize = true };
-        _radConflictFail = new RadioButton { Text = "Mark it as a problem and don't rename it", Location = new Point(10, 70), AutoSize = true };
-        gbConflict.Controls.AddRange([_radConflictAppend, _radConflictSkip, _radConflictFail]);
-
-        // ----- 10. Scope -----
-        var gbScope = NewGroup("Scope — mirrors the bar above the grid", 112);
-        gbScope.Controls.Add(NewInlineLabel("Include mask:", 10, 26));
-        _txtAdvIncludeMask = new TextBox { Location = new Point(98, 23), Width = 338 };
-        gbScope.Controls.Add(NewInlineLabel("Exclude mask:", 10, 54));
-        _txtAdvExcludeMask = new TextBox { Location = new Point(98, 51), Width = 338 };
-        _chkAdvSubfolders = new CheckBox { Text = "Include subfolders (applies on next Load)", Location = new Point(10, 80), AutoSize = true };
-        gbScope.Controls.AddRange([_txtAdvIncludeMask, _txtAdvExcludeMask, _chkAdvSubfolders]);
-        _txtAdvIncludeMask.TextChanged += (_, _) => SyncScopeFromAdvanced();
-        _txtAdvExcludeMask.TextChanged += (_, _) => SyncScopeFromAdvanced();
-        _chkAdvSubfolders.CheckedChanged += (_, _) => SyncScopeFromAdvanced();
-
-        stack.Controls.AddRange([gbPattern, gbCounter, gbRules, gbRemove, gbInsert, gbHygiene,
-            gbCase, gbAffix, gbConflict, gbScope]);
-        _advancedHost.Controls.Add(stack);
-
-        WireChange(_txtAdvPattern, _cmbDateSource,
-            _numAdvStart, _numAdvStep, _numAdvPad, _chkCounterPerFolder,
-            _chkRemoveRange, _numRemoveStart, _numRemoveCount, _chkRemoveFromEnd, _chkRemoveNumbers, _chkRemoveBrackets,
-            _chkInsert, _txtInsertText, _numInsertPos, _chkInsertFromEnd,
-            _chkTrim, _chkCollapse, _chkDiacritics, _txtStrip, _chkReplaceSpaces, _txtReplaceSpacesWith,
-            _cmbAdvNameCase, _cmbAdvExtCase, _txtAdvPrefix, _txtAdvSuffix,
-            _radConflictAppend, _radConflictSkip, _radConflictFail);
+        WireChange(_chkSwap, _txtSwapSeparator);
     }
 
     private void MoveRule(int delta)
@@ -266,18 +280,20 @@ public partial class BatchRenameForm
             }
             else
             {
-                findCell.Style.BackColor = Services.ThemeService.GridProblemBack;
+                findCell.Style.BackColor = ThemeService.GridProblemBack;
                 findCell.ToolTipText = error;
                 invalid++;
             }
         }
-        _lblRulesStatus.ForeColor = invalid > 0 ? Services.ThemeService.GridProblemText : SystemColors.GrayText;
+        _lblRulesStatus.ForeColor = invalid > 0 ? ThemeService.GridProblemText : SystemColors.GrayText;
         _lblRulesStatus.Text = invalid > 0
             ? $"{invalid} rule(s) have an invalid regular expression — hover the red cell."
             : _rulesGrid.Rows.Count == 0
                 ? "No rules — add one to start replacing."
                 : $"{_rulesGrid.Rows.Count} rule(s), applied in order.";
     }
+
+    // ---------- scope sync with the bar above the grid ----------
 
     private void SyncScopeToAdvanced()
     {

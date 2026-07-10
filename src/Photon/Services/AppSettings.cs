@@ -10,6 +10,8 @@ public sealed class AppSettings
     public List<string> RecentSources { get; set; } = [];
     public bool AlwaysOnTop { get; set; }
     public AppTheme Theme { get; set; } = AppTheme.Light;
+    /// <summary>Status-bar clock format; off = 12-hour with AM/PM.</summary>
+    public bool Use24HourClock { get; set; }
 }
 
 /// <summary>Saved main-window placement, kept as plain ints so the JSON stays trivial.</summary>

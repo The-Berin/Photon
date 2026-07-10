@@ -3,6 +3,7 @@ using MetadataExtractor.Formats.Exif;
 using MetadataExtractor.Formats.Jpeg;
 using MetadataExtractor.Formats.Png;
 using MetadataExtractor.Formats.QuickTime;
+using MetadataExtractor.Formats.Xmp;
 using Photon.Core.Models;
 using MetaDirectory = MetadataExtractor.Directory;
 
@@ -24,6 +25,7 @@ public sealed class MetadataReader : IMetadataReader
             ReadCamera(file, dirs);
             ReadGps(file, dirs);
             ReadDimensions(file, dirs);
+            ReadExtended(file, dirs);
         }
         catch
         {
@@ -94,6 +96,61 @@ public sealed class MetadataReader : IMetadataReader
             file.PixelWidth = width;
             file.PixelHeight = height;
         }
+    }
+
+    /// <summary>Best-effort extra fields for the rename tokens; anything absent simply stays null.</summary>
+    private static void ReadExtended(MediaFile file, IReadOnlyList<MetaDirectory> dirs)
+    {
+        foreach (var sub in dirs.OfType<ExifSubIfdDirectory>())
+        {
+            if (file.FNumber is null && sub.TryGetDouble(ExifDirectoryBase.TagFNumber, out var fNumber))
+                file.FNumber = fNumber;
+            if (file.IsoSpeed is null && sub.TryGetInt32(ExifDirectoryBase.TagIsoEquivalent, out var iso))
+                file.IsoSpeed = iso;
+            if (file.FocalLengthMm is null && sub.TryGetDouble(ExifDirectoryBase.TagFocalLength, out var focal))
+                file.FocalLengthMm = focal;
+            file.ExposureTime ??= CleanExposure(sub.GetDescription(ExifDirectoryBase.TagExposureTime));
+            file.LensModel ??= Clean(sub.GetDescription(ExifDirectoryBase.TagLensModel));
+        }
+        foreach (var ifd0 in dirs.OfType<ExifIfd0Directory>())
+        {
+            file.Artist ??= Clean(ifd0.GetDescription(ExifDirectoryBase.TagArtist));
+            file.Software ??= Clean(ifd0.GetDescription(ExifDirectoryBase.TagSoftware));
+            if (file.Orientation is null && ifd0.TryGetInt32(ExifDirectoryBase.TagOrientation, out var orientation))
+                file.Orientation = orientation;
+        }
+        // Some tools only record the lens in XMP (aux:Lens and friends).
+        if (file.LensModel is null)
+            foreach (var xmp in dirs.OfType<XmpDirectory>())
+            {
+                foreach (var (key, value) in xmp.GetXmpProperties())
+                    if (key.EndsWith(":Lens", StringComparison.OrdinalIgnoreCase)
+                        || key.EndsWith(":LensModel", StringComparison.OrdinalIgnoreCase))
+                    {
+                        file.LensModel = Clean(value);
+                        break;
+                    }
+                if (file.LensModel is not null) break;
+            }
+        foreach (var header in dirs.OfType<QuickTimeMovieHeaderDirectory>())
+        {
+            // MetadataExtractor 2.8 stores mvhd duration as a TimeSpan (already timescale-corrected).
+            if (header.GetObject(QuickTimeMovieHeaderDirectory.TagDuration) is TimeSpan duration
+                && duration > TimeSpan.Zero)
+            {
+                file.DurationSeconds = duration.TotalSeconds;
+                break;
+            }
+        }
+    }
+
+    /// <summary>"1/250 sec" (the library's rendering) → the model's "1/250" convention.</summary>
+    private static string? CleanExposure(string? description)
+    {
+        var cleaned = Clean(description);
+        if (cleaned is null) return null;
+        if (cleaned.EndsWith(" sec", StringComparison.OrdinalIgnoreCase)) cleaned = cleaned[..^4].TrimEnd();
+        return cleaned.Length == 0 ? null : cleaned;
     }
 
     private static bool TryDims<T>(IReadOnlyList<MetaDirectory> dirs, int widthTag, int heightTag, out int width, out int height)

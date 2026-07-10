@@ -60,7 +60,7 @@ public partial class MainForm
     private CheckBox _chkWriteLog = null!, _chkExportCsv = null!;
     private TextBox _txtWav = null!;
     private Button _btnBrowseWav = null!;
-    private CheckBox _chkDarkMode = null!, _chkKeepDisplay = null!;
+    private CheckBox _chkDarkMode = null!, _chk24Hour = null!, _chkKeepDisplay = null!;
     private ComboBox _cboSizeUnit = null!, _cboWhenDone = null!;
 
     private static readonly string[] SizeUnitNames = ["Auto", "B", "KB", "MB", "GB", "TB"];
@@ -497,7 +497,8 @@ public partial class MainForm
             Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right,
         };
         _chkDarkMode = MakeCheck("Dark mode", 14, 22);
-        grpAppearance.Controls.Add(_chkDarkMode);
+        _chk24Hour = MakeCheck("24-hour clock", 150, 22);
+        grpAppearance.Controls.AddRange([_chkDarkMode, _chk24Hour]);
 
         var grpRuntime = new GroupBox
         {
