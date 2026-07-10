@@ -310,10 +310,11 @@ public class SortExecutorTests : InvariantCultureTest, IDisposable
     [Fact]
     public async Task LogAndCsv_Created_HeaderExact_FieldsQuoted()
     {
-        // File name with a comma and a quote exercises CSV escaping end to end.
-        var weird = SourceFile("we,ird \"name\".jpg", make: "Acme", model: "X100");
+        // A comma in the file name (legal on every OS, unlike '"') plus a quote in the
+        // camera make exercises CSV quoting and quote-escaping end to end.
+        var weird = SourceFile("we,ird name.jpg", make: "Ac\"me", model: "X100");
         var plain = SourceFile("plain.jpg");
-        var weirdDest = _t.At("dest/2023/we,ird \"name\".jpg");
+        var weirdDest = _t.At("dest/2023/we,ird name.jpg");
 
         var o = Options();
         o.WriteLogFile = true;
@@ -336,6 +337,7 @@ public class SortExecutorTests : InvariantCultureTest, IDisposable
 
         var weirdRow = rows.Single(r => r[0] == weird.FilePath);   // round-trips only if properly quoted
         Assert.Equal(weirdDest, weirdRow[1]);
+        Assert.Contains("Ac\"me", weirdRow[3]);                    // embedded quote survives escaping
         Assert.Single(rows, r => r[0] == plain.FilePath);
     }
 }

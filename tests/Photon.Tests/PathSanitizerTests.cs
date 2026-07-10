@@ -52,28 +52,32 @@ public class PathSanitizerTests
     public void SanitizeSegment_CustomFallback()
         => Assert.Equal("Unknown Camera", PathSanitizer.SanitizeSegment("", "Unknown Camera"));
 
+    // Relative paths built with Path.Combine keep separators platform-native, so the
+    // expectations hold on Windows (\) and Unix (/) alike.
+    private static readonly string A = Path.Combine("x", "a.jpg");
+
     [Fact]
     public void MakeUnique_NoCollision_ReturnsOriginal()
     {
         var exists = new HashSet<string>();
-        Assert.Equal("/x/a.jpg", PathSanitizer.MakeUnique("/x/a.jpg", exists.Contains));
+        Assert.Equal(A, PathSanitizer.MakeUnique(A, exists.Contains));
     }
 
     [Fact]
     public void MakeUnique_AppendsCounterBeforeExtension()
     {
-        var exists = new HashSet<string> { "/x/a.jpg" };
-        Assert.Equal(Path.Combine("/x", "a_1.jpg"), PathSanitizer.MakeUnique("/x/a.jpg", exists.Contains));
+        var exists = new HashSet<string> { A };
+        Assert.Equal(Path.Combine("x", "a_1.jpg"), PathSanitizer.MakeUnique(A, exists.Contains));
 
-        exists.Add(Path.Combine("/x", "a_1.jpg"));
-        exists.Add(Path.Combine("/x", "a_2.jpg"));
-        Assert.Equal(Path.Combine("/x", "a_3.jpg"), PathSanitizer.MakeUnique("/x/a.jpg", exists.Contains));
+        exists.Add(Path.Combine("x", "a_1.jpg"));
+        exists.Add(Path.Combine("x", "a_2.jpg"));
+        Assert.Equal(Path.Combine("x", "a_3.jpg"), PathSanitizer.MakeUnique(A, exists.Contains));
     }
 
     [Fact]
     public void MakeUnique_NoExtension()
     {
-        var exists = new HashSet<string> { "/x/folder" };
-        Assert.Equal(Path.Combine("/x", "folder_1"), PathSanitizer.MakeUnique("/x/folder", exists.Contains));
+        var exists = new HashSet<string> { Path.Combine("x", "folder") };
+        Assert.Equal(Path.Combine("x", "folder_1"), PathSanitizer.MakeUnique(Path.Combine("x", "folder"), exists.Contains));
     }
 }
