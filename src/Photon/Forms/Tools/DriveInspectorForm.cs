@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using System.Management;
+using Photon.App.Services;
 using Photon.Core.Models;
 using Photon.Core.Util;
 
@@ -113,6 +114,7 @@ public sealed class DriveInspectorForm : Form
         _cancelTestButton.Click += (_, _) => _testCts?.Cancel();
         Load += async (_, _) => await RefreshAllAsync();
         FormClosing += (_, _) => _testCts?.Cancel();
+        ThemeService.FixGaps(this);
     }
 
     // ----- volume / disk enumeration -----

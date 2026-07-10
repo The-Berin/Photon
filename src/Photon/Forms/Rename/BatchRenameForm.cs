@@ -1,3 +1,4 @@
+using Photon.App.Services;
 using Photon.Core.Models;
 using Photon.Core.Services;
 using Photon.Core.Util;
@@ -66,6 +67,7 @@ public partial class BatchRenameForm : Form
         BuildLayout();
         BuildSimplePanel();
         BuildAdvancedPanel();
+        ThemeService.FixGaps(this);
         SetMode(advanced: false);
 
         _presets.Load();
@@ -434,15 +436,15 @@ public partial class BatchRenameForm : Form
         switch (row.Kind)
         {
             case RowKind.Changed:
-                e.CellStyle!.BackColor = Color.FromArgb(223, 240, 216);
+                e.CellStyle!.BackColor = ThemeService.GridChangedBack;
                 break;
             case RowKind.Problem:
-                e.CellStyle!.BackColor = Color.FromArgb(248, 215, 218);
-                if (e.ColumnIndex == ColStatus) e.CellStyle.ForeColor = Color.FromArgb(150, 30, 30);
+                e.CellStyle!.BackColor = ThemeService.GridProblemBack;
+                if (e.ColumnIndex == ColStatus) e.CellStyle.ForeColor = ThemeService.GridProblemText;
                 break;
             case RowKind.Off:
             case RowKind.Excluded:
-                e.CellStyle!.ForeColor = Color.Gray;
+                e.CellStyle!.ForeColor = ThemeService.GridDimText;
                 break;
         }
     }

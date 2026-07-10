@@ -1,3 +1,5 @@
+using Photon.App.Services;
+
 namespace Photon.App.Forms;
 
 /// <summary>Minimal modal text prompt (used for naming presets).</summary>
@@ -24,6 +26,7 @@ internal sealed class TextPromptDialog : Form
         AcceptButton = ok;
         CancelButton = cancel;
         Controls.AddRange([lbl, _text, ok, cancel]);
+        ThemeService.FixGaps(this);
     }
 }
 
@@ -77,5 +80,6 @@ internal sealed class RenameSummaryDialog : Form
             box.BringToFront();
         }
         Controls.Add(lbl);
+        ThemeService.FixGaps(this);
     }
 }

@@ -1,4 +1,5 @@
 using Photon.App.Interop;
+using Photon.App.Services;
 using Photon.Core.Models;
 using Photon.Core.Services;
 using Photon.Core.Util;
@@ -145,6 +146,7 @@ public sealed class FolderScanForm : Form
         FormClosing += (_, _) => _cts?.Cancel();
 
         if (!string.IsNullOrWhiteSpace(initialFolder)) _folderBox.Text = initialFolder.Trim();
+        ThemeService.FixGaps(this);
     }
 
     // ----- layout helpers -----
@@ -292,7 +294,7 @@ public sealed class FolderScanForm : Form
             _verdictLabel.Text = fits
                 ? "Enough room to copy-sort on this volume."
                 : "NOT enough room to copy-sort on this volume.";
-            _verdictLabel.ForeColor = fits ? Color.Green : Color.Firebrick;
+            _verdictLabel.ForeColor = fits ? ThemeService.SuccessText : ThemeService.ErrorText;
         }
         else
         {

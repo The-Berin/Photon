@@ -1,3 +1,4 @@
+using Photon.App.Services;
 using Photon.Core.Models;
 using Photon.Core.Services;
 
@@ -96,6 +97,7 @@ public sealed class FlattenForm : Form
         _conflictSkip.CheckedChanged += (_, _) => InvalidatePlan();
 
         if (!string.IsNullOrWhiteSpace(initialFolder)) _folderBox.Text = initialFolder.Trim();
+        ThemeService.FixGaps(this);
     }
 
     private void InvalidatePlan()

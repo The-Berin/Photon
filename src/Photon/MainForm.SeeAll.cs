@@ -62,6 +62,7 @@ internal sealed class SeeAllFilesForm : Form
         };
         Shown += (_, _) => { UpdateScrollRange(); _canvas.Focus(); };
         FormClosed += (_, _) => _cts.Cancel();
+        ThemeService.FixGaps(this);
     }
 
     private int Columns => Math.Max(1, (_canvas.ClientSize.Width - Pad * 2) / TileWidth);

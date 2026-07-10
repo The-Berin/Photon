@@ -266,12 +266,12 @@ public partial class BatchRenameForm
             }
             else
             {
-                findCell.Style.BackColor = Color.FromArgb(248, 215, 218);
+                findCell.Style.BackColor = Services.ThemeService.GridProblemBack;
                 findCell.ToolTipText = error;
                 invalid++;
             }
         }
-        _lblRulesStatus.ForeColor = invalid > 0 ? Color.FromArgb(150, 30, 30) : SystemColors.GrayText;
+        _lblRulesStatus.ForeColor = invalid > 0 ? Services.ThemeService.GridProblemText : SystemColors.GrayText;
         _lblRulesStatus.Text = invalid > 0
             ? $"{invalid} rule(s) have an invalid regular expression — hover the red cell."
             : _rulesGrid.Rows.Count == 0

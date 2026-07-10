@@ -43,6 +43,7 @@ public partial class MainForm : Form
     {
         _settingsService = settingsService;
         BuildUi();
+        ThemeService.FixGaps(this);
         WireEvents();
         ApplyWindowPlacement();
         ApplySettingsToUi();
@@ -302,6 +303,9 @@ public partial class MainForm : Form
         ScheduleSave();
     }
 
+    // The native color mode (Application.SetColorMode) can only change before the first
+    // window exists, so the toggle just saves the setting and points at a restart —
+    // repainting controls by hand cannot match the native theme and only produces a mix.
     private void ApplyDarkMode(bool dark)
     {
         _suppress = true;
@@ -309,13 +313,12 @@ public partial class MainForm : Form
         _miDarkMode.Checked = dark;
         _suppress = false;
         Settings.Theme = dark ? AppTheme.Dark : AppTheme.Light;
-        ThemeService.ApplyBestEffort(this, dark);
         ScheduleSave();
         if (!_darkRestartNoteShown)
         {
             _darkRestartNoteShown = true;
             MessageBox.Show(this,
-                "This is a best-effort recolor — full dark mode applies after restarting Photon.",
+                "The new theme applies after restarting Photon.",
                 "Dark mode", MessageBoxButtons.OK, MessageBoxIcon.Information);
         }
     }

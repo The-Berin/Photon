@@ -1,5 +1,6 @@
 using System.Text;
 using Photon.App.Interop;
+using Photon.App.Services;
 using Photon.Core.Models;
 using Photon.Core.Services;
 
@@ -56,6 +57,7 @@ public sealed class HistoryForm : Form
         _openJournalButton.Click += OnOpenJournalFolder;
         _openDestButton.Click += OnOpenDestination;
         Load += async (_, _) => await RefreshJournalsAsync();
+        ThemeService.FixGaps(this);
     }
 
     private async Task RefreshJournalsAsync()
@@ -241,6 +243,7 @@ public sealed class HistoryForm : Form
             _cancelButton.SetBounds(340, 66, 88, 28);
             _cancelButton.Click += (_, _) => { _cancelButton.Enabled = false; _cts.Cancel(); };
             Controls.AddRange([_label, _bar, _cancelButton]);
+            ThemeService.FixGaps(this);
         }
 
         protected override void OnShown(EventArgs e)

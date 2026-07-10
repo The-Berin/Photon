@@ -1,5 +1,6 @@
 using System.ComponentModel;
 using Photon.App.Interop;
+using Photon.App.Services;
 using Photon.Core.Models;
 using Photon.Core.Services;
 using Photon.Core.Util;
@@ -180,6 +181,7 @@ public sealed class DuplicateFinderForm : Form
         FormClosing += (_, _) => _cts?.Cancel();
 
         if (!string.IsNullOrWhiteSpace(initialFolder)) _folderList.Items.Add(initialFolder.Trim());
+        ThemeService.FixGaps(this);
     }
 
     private static void AddRadioWithHint(GroupBox box, RadioButton radio, string hint, int y)
