@@ -1,3 +1,5 @@
+<img src="assets/banner.svg" alt="Photon — fast • local • photo sorting" width="100%" />
+
 # Photon
 
 **The fastest way to sort a lifetime of photos.**
