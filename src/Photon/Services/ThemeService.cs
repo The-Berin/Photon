@@ -46,16 +46,15 @@ public static class ThemeService
     /// <summary>De-emphasized text for excluded/off rows.</summary>
     public static Color GridDimText => IsDark ? Color.FromArgb(150, 150, 150) : Color.Gray;
 
-    /// <summary>Startup-only: must run before the first form is shown.</summary>
+    /// <summary>
+    /// Startup-only: must run before the first form is shown. Light (Classic) is the default
+    /// look regardless of the OS theme — WinForms native dark rendering is still rough, so
+    /// dark is strictly opt-in via the Dark mode checkbox (AppTheme.System maps to light too).
+    /// </summary>
     public static void ApplyColorMode(AppTheme theme)
     {
         if (!OperatingSystem.IsWindows()) return;
-        Application.SetColorMode(theme switch
-        {
-            AppTheme.Dark => SystemColorMode.Dark,
-            AppTheme.Light => SystemColorMode.Classic,
-            _ => SystemColorMode.System,
-        });
+        Application.SetColorMode(theme == AppTheme.Dark ? SystemColorMode.Dark : SystemColorMode.Classic);
     }
 
     /// <summary>

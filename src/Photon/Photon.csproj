@@ -10,7 +10,7 @@
     <RootNamespace>Photon.App</RootNamespace>
     <AssemblyName>Photon</AssemblyName>
     <ApplicationHighDpiMode>PerMonitorV2</ApplicationHighDpiMode>
-    <Version>1.0.1</Version>
+    <Version>1.0.2</Version>
     <!-- Allows compiling (not running) the Windows target on macOS/Linux dev machines. -->
     <EnableWindowsTargeting>true</EnableWindowsTargeting>
     <!-- .NET 9 dark mode API (Application.SetColorMode) is marked experimental. -->

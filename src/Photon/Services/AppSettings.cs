@@ -9,7 +9,7 @@ public sealed class AppSettings
     public WindowPlacement? WindowBounds { get; set; }
     public List<string> RecentSources { get; set; } = [];
     public bool AlwaysOnTop { get; set; }
-    public AppTheme Theme { get; set; } = AppTheme.System;
+    public AppTheme Theme { get; set; } = AppTheme.Light;
 }
 
 /// <summary>Saved main-window placement, kept as plain ints so the JSON stays trivial.</summary>
