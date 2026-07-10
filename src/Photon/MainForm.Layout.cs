@@ -82,7 +82,7 @@ public partial class MainForm
             Dock = DockStyle.Fill,
             ColumnCount = 2,
             RowCount = 1,
-            Padding = new Padding(6, 4, 6, 2),
+            Padding = new Padding(12, 10, 12, 12),
         };
         content.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 620));
         content.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
@@ -188,11 +188,15 @@ public partial class MainForm
 
     private void BuildStatusBar()
     {
-        _statusStrip = new StatusStrip { ShowItemToolTips = true };
+        _statusStrip = new StatusStrip
+        {
+            ShowItemToolTips = true,
+            Padding = new Padding(12, 6, 18, 6),
+        };
         _lblStatus = new ToolStripStatusLabel("Ready") { Spring = true, TextAlign = ContentAlignment.MiddleLeft };
-        _lblClock = new ToolStripStatusLabel("");
-        var lblWhenDone = new ToolStripStatusLabel("When Done:");
-        _cboStatusWhenDone = new ToolStripComboBox { DropDownStyle = ComboBoxStyle.DropDownList, AutoSize = false, Width = 150 };
+        _lblClock = new ToolStripStatusLabel("") { Margin = new Padding(0, 3, 16, 3) };
+        var lblWhenDone = new ToolStripStatusLabel("When Done:") { Margin = new Padding(8, 3, 2, 3) };
+        _cboStatusWhenDone = new ToolStripComboBox { DropDownStyle = ComboBoxStyle.DropDownList, AutoSize = false, Width = 150, Margin = new Padding(0, 3, 4, 3) };
         _cboStatusWhenDone.Items.AddRange(WhenDoneNames);
         _statusStrip.Items.AddRange(new ToolStripItem[] { _lblStatus, _lblClock, lblWhenDone, _cboStatusWhenDone });
     }
@@ -209,9 +213,9 @@ public partial class MainForm
             Margin = new Padding(0),
         };
         left.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
-        left.RowStyles.Add(new RowStyle(SizeType.Absolute, 124));
+        left.RowStyles.Add(new RowStyle(SizeType.Absolute, 138));
         left.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
-        left.RowStyles.Add(new RowStyle(SizeType.Absolute, 300));
+        left.RowStyles.Add(new RowStyle(SizeType.Absolute, 314));
 
         left.Controls.Add(BuildFoldersGroup(), 0, 0);
         left.Controls.Add(BuildPreviewGroup(), 0, 1);
@@ -221,7 +225,7 @@ public partial class MainForm
 
     private Control BuildFoldersGroup()
     {
-        _grpFolders = new GroupBox { Text = "Folders", Dock = DockStyle.Fill, Size = new Size(604, 118) };
+        _grpFolders = new GroupBox { Text = "Folders", Dock = DockStyle.Fill, Size = new Size(604, 126), Margin = new Padding(0, 0, 0, 12), Padding = new Padding(6) };
 
         var lblSource = MakeLabel("Source:", 10, 27);
         _txtSource = new TextBox
@@ -263,7 +267,7 @@ public partial class MainForm
 
     private Control BuildPreviewGroup()
     {
-        _grpPreview = new GroupBox { Text = "Preview", Dock = DockStyle.Fill, Size = new Size(604, 370) };
+        _grpPreview = new GroupBox { Text = "Preview", Dock = DockStyle.Fill, Size = new Size(604, 370), Margin = new Padding(0, 0, 0, 12), Padding = new Padding(6) };
 
         _previewFlow = new FlowLayoutPanel
         {
@@ -309,7 +313,7 @@ public partial class MainForm
 
     private Control BuildRunGroup()
     {
-        _grpRun = new GroupBox { Text = "Run", Dock = DockStyle.Fill, Size = new Size(604, 294) };
+        _grpRun = new GroupBox { Text = "Run", Dock = DockStyle.Fill, Size = new Size(604, 314), Margin = new Padding(0), Padding = new Padding(6) };
 
         _lblInfo = new Label
         {
@@ -349,7 +353,7 @@ public partial class MainForm
 
     private Control BuildTabs()
     {
-        _tabs = new TabControl { Dock = DockStyle.Fill, Margin = new Padding(3, 0, 0, 0) };
+        _tabs = new TabControl { Dock = DockStyle.Fill, Margin = new Padding(14, 0, 0, 0) };
         _tabs.TabPages.Add(BuildStructureTab());
         _tabs.TabPages.Add(BuildDuplicatesTab());
         _tabs.TabPages.Add(BuildLogExportTab());
